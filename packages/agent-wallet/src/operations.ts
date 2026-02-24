@@ -11,6 +11,12 @@ import {
   formatAmount,
   getSbcContract,
 } from './token.js';
+import {
+  assertValidAddress,
+  assertValidAmount,
+  assertValidAsset,
+  assertWithinLimits,
+} from './validation.js';
 
 const ERC20_ABI = parseAbi([
   'function transfer(address to, uint256 amount) returns (bool)',
@@ -63,6 +69,11 @@ export class Operations {
     amount: string,
     asset: Asset = 'USD',
   ): Promise<SendResult> {
+    assertValidAddress(to, 'recipient');
+    assertValidAmount(amount, 'send amount');
+    assertValidAsset(asset);
+    assertWithinLimits(amount, asset);
+
     const from = this.wallet.deriveAddress(walletIndex);
     const rawAmount = parseAmount(amount, asset);
 

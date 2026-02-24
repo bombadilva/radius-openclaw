@@ -1,0 +1,23 @@
+{
+  "name": "create-radius-agent",
+  "version": "0.1.0",
+  "description": "Scaffold a new OpenClaw agent with Radius payments pre-configured",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "create-radius-agent": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}

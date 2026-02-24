@@ -32,6 +32,28 @@ export {
   type PaymentMonitorConfig,
 } from './payment-monitor.js';
 
+// Validation
+export {
+  isValidAddress,
+  isValidAmount,
+  isValidAsset,
+  isValidNetwork,
+  assertValidAddress,
+  assertValidAmount,
+  assertValidAsset,
+  assertWithinLimits,
+  MAX_SEND_USD,
+  MAX_SEND_SBC,
+} from './validation.js';
+
+// Streaming
+export {
+  streamPayment,
+  type StreamConfig,
+  type StreamTick,
+  type StreamResult,
+} from './streaming.js';
+
 // ── Convenience factory ─────────────────────────────────────────────
 
 import { ChainClient, type ChainConfig } from './chain.js';
@@ -40,6 +62,7 @@ import { Signer } from './signer.js';
 import { Operations } from './operations.js';
 import { AgentDb, type DbConfig } from './db.js';
 import { PaymentMonitor, type PaymentMonitorConfig } from './payment-monitor.js';
+import { isValidPrivateKey, isValidNetwork } from './validation.js';
 
 export interface AgentWalletConfig {
   masterKey: `0x${string}`;
@@ -67,8 +90,9 @@ export interface AgentWalletKit {
  */
 export function createAgentWallet(config: AgentWalletConfig): AgentWalletKit {
   if (!config.masterKey) throw new Error('masterKey is required');
-  if (!config.agentId) throw new Error('agentId is required');
-  if (!config.network) throw new Error('network is required');
+  if (!isValidPrivateKey(config.masterKey)) throw new Error('masterKey must be 0x-prefixed 64 hex chars');
+  if (!config.agentId || config.agentId.trim() === '') throw new Error('agentId is required');
+  if (!isValidNetwork(config.network)) throw new Error('network must be "testnet" or "mainnet"');
 
   const chainClient = new ChainClient({
     network: config.network,

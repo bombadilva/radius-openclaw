@@ -1,0 +1,28 @@
+{
+  "name": "@bombadilva/radius-faucet",
+  "version": "0.1.0",
+  "description": "Testnet USD faucet agent for Radius Network",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "radius-faucet": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bombadilva/agent-wallet": "*",
+    "express": "^4.21.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
