@@ -1,0 +1,66 @@
+{
+  "name": "radius-payments",
+  "version": "0.1.0",
+  "description": "Radius stablecoin payment tools for OpenClaw agents",
+  "author": "Radius",
+  "entry": "dist/index.js",
+  "config": {
+    "masterKey": {
+      "type": "string",
+      "required": true,
+      "secret": true,
+      "description": "0x-prefixed 32-byte hex master key for HD wallet derivation"
+    },
+    "agentId": {
+      "type": "string",
+      "required": true,
+      "description": "Unique identifier for this agent deployment"
+    },
+    "network": {
+      "type": "string",
+      "required": true,
+      "default": "testnet",
+      "enum": ["testnet", "mainnet"],
+      "description": "Radius network to connect to"
+    },
+    "rpcUrl": {
+      "type": "string",
+      "required": false,
+      "description": "Custom RPC URL (defaults to public endpoint)"
+    },
+    "dataDir": {
+      "type": "string",
+      "required": false,
+      "default": "./data",
+      "description": "Directory for persistent data storage"
+    },
+    "walletIndex": {
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "description": "HD wallet index for this agent's primary wallet"
+    },
+    "pollInterval": {
+      "type": "number",
+      "required": false,
+      "default": 2000,
+      "description": "Payment monitor polling interval in milliseconds"
+    }
+  },
+  "tools": [
+    "radius_send_payment",
+    "radius_check_balance",
+    "radius_get_address",
+    "radius_monitor_payments",
+    "radius_request_payment",
+    "radius_refund",
+    "radius_swap"
+  ],
+  "skills": [
+    "skills/radius-payments",
+    "skills/radius-commerce"
+  ],
+  "services": [
+    "payment-watcher"
+  ]
+}
