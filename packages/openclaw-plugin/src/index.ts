@@ -1,119 +1,123 @@
 import { createAgentWallet, type AgentWalletKit } from '@bombadilva/agent-wallet';
-import { sendPaymentTool } from './tools/send-payment.js';
-import { checkBalanceTool } from './tools/check-balance.js';
-import { getAddressTool } from './tools/get-address.js';
-import { monitorPaymentsTool } from './tools/monitor-payments.js';
-import { requestPaymentTool } from './tools/request-payment.js';
-import { refundTool } from './tools/refund.js';
-import { swapTool } from './tools/swap.js';
+import { createSendPaymentTool } from './tools/send-payment.js';
+import { createCheckBalanceTool } from './tools/check-balance.js';
+import { createGetAddressTool } from './tools/get-address.js';
+import { createMonitorPaymentsTool } from './tools/monitor-payments.js';
+import { createRequestPaymentTool } from './tools/request-payment.js';
+import { createRefundTool } from './tools/refund.js';
+import { createSwapTool } from './tools/swap.js';
 import { PaymentWatcherService } from './services/payment-watcher.js';
-import { onAgentStartup, onPaymentReceived } from './hooks/lifecycle.js';
 
-// ── OpenClaw Plugin API types ───────────────────────────────────────
+// Plugin-scoped state
+let kit: AgentWalletKit | null = null;
 
-interface OpenClawPluginApi {
-  registerTool(tool: {
-    name: string;
-    description: string;
-    parameters: object;
-    handler: (params: Record<string, unknown>) => Promise<unknown>;
-  }): void;
+const TOOL_NAMES = [
+  'radius_send_payment',
+  'radius_check_balance',
+  'radius_get_address',
+  'radius_monitor_payments',
+  'radius_request_payment',
+  'radius_refund',
+  'radius_swap',
+];
 
-  registerService(service: {
-    name: string;
-    start: () => void;
-    stop: () => void;
-  }): void;
+const radiusPlugin = {
+  id: 'radius-payments',
+  name: 'Radius Payments',
+  description: 'Radius stablecoin payment tools for OpenClaw agents',
+  version: '0.1.0',
 
-  registerHook(hook: {
-    event: string;
-    handler: (...args: unknown[]) => void | Promise<void>;
-  }): void;
+  configSchema: {
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        masterKey: { type: 'string', description: '0x-prefixed 32-byte hex master key' },
+        agentId: { type: 'string', description: 'Unique agent deployment identifier' },
+        network: { type: 'string', enum: ['testnet', 'mainnet'], default: 'testnet' },
+        rpcUrl: { type: 'string', description: 'Custom RPC URL (optional)' },
+        dataDir: { type: 'string', default: './data' },
+        walletIndex: { type: 'number', default: 0 },
+        pollInterval: { type: 'number', default: 2000 },
+      },
+      required: ['masterKey', 'agentId'],
+    },
+    uiHints: {
+      masterKey: { sensitive: true, label: 'Master Key', help: 'HD wallet root secret' },
+      agentId: { label: 'Agent ID' },
+      network: { label: 'Network' },
+    },
+  },
 
-  getConfig(): Record<string, unknown>;
+  register(api: any) {
+    const cfg = api.pluginConfig ?? {};
+    const masterKey = (cfg.masterKey ?? process.env.MASTER_KEY) as `0x${string}`;
+    const agentId = (cfg.agentId ?? process.env.RADIUS_AGENT_ID) as string;
+    const network = (cfg.network ?? process.env.RADIUS_NETWORK ?? 'testnet') as 'testnet' | 'mainnet';
+    const walletIndex = (cfg.walletIndex ?? 0) as number;
 
-  emitEvent(name: string, data: unknown): void;
+    if (!masterKey) {
+      api.logger.error('Radius plugin: masterKey is required (set in config or MASTER_KEY env)');
+      return;
+    }
+    if (!agentId) {
+      api.logger.error('Radius plugin: agentId is required (set in config or RADIUS_AGENT_ID env)');
+      return;
+    }
 
-  log(level: 'info' | 'warn' | 'error', message: string): void;
-
-  injectMessage(role: 'system' | 'assistant', content: string): void;
-}
-
-// ── Plugin registration ─────────────────────────────────────────────
-
-export function register(api: OpenClawPluginApi): void {
-  const config = api.getConfig();
-
-  // Validate required config
-  const masterKey = config.masterKey as `0x${string}`;
-  const agentId = config.agentId as string;
-  const network = (config.network as 'testnet' | 'mainnet') || 'testnet';
-
-  if (!masterKey) throw new Error('Radius plugin: masterKey is required');
-  if (!agentId) throw new Error('Radius plugin: agentId is required');
-
-  const walletIndex = (config.walletIndex as number) ?? 0;
-
-  // Initialize agent wallet kit
-  const kit = createAgentWallet({
-    masterKey,
-    agentId,
-    network,
-    rpcUrl: config.rpcUrl as string | undefined,
-    dataDir: config.dataDir as string | undefined,
-    pollInterval: config.pollInterval as number | undefined,
-  });
-
-  // Register tools
-  const tools = [
-    sendPaymentTool,
-    checkBalanceTool,
-    getAddressTool,
-    monitorPaymentsTool,
-    requestPaymentTool,
-    refundTool,
-    swapTool,
-  ];
-
-  for (const tool of tools) {
-    api.registerTool({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-      handler: tool.createHandler(kit, walletIndex) as (params: Record<string, unknown>) => Promise<unknown>,
+    // Initialize the wallet kit
+    kit = createAgentWallet({
+      masterKey,
+      agentId,
+      network,
+      rpcUrl: cfg.rpcUrl as string | undefined,
+      dataDir: (cfg.dataDir as string) ?? './data',
+      pollInterval: (cfg.pollInterval as number) ?? 2000,
     });
-  }
 
-  // Register payment watcher service
-  const watcher = new PaymentWatcherService(kit, walletIndex, {
-    emitEvent: (name, data) => api.emitEvent(name, data),
-    log: (level, msg) => api.log(level, msg),
-  });
+    // Register wallet in database
+    const address = kit.wallet.deriveAddress(walletIndex);
+    kit.db.upsertWallet(agentId, walletIndex, address);
+    api.logger.info(`Radius wallet: ${address} on ${kit.chainClient.chain.name}`);
 
-  api.registerService({
-    name: 'payment-watcher',
-    start: () => watcher.start(),
-    stop: () => watcher.stop(),
-  });
+    // Register all tools via factory
+    api.registerTool(
+      () => [
+        createSendPaymentTool(kit!, walletIndex),
+        createCheckBalanceTool(kit!, walletIndex),
+        createGetAddressTool(kit!, walletIndex),
+        createMonitorPaymentsTool(kit!, walletIndex),
+        createRequestPaymentTool(kit!, walletIndex),
+        createRefundTool(kit!, walletIndex),
+        createSwapTool(kit!, walletIndex),
+      ],
+      { names: TOOL_NAMES },
+    );
 
-  // Register lifecycle hooks
-  api.registerHook({
-    event: 'agent_startup',
-    handler: () => onAgentStartup(kit, walletIndex, {
-      log: (level, msg) => api.log(level, msg),
-      injectMessage: (role, content) => api.injectMessage(role, content),
-    }),
-  });
+    // Register payment watcher service
+    const watcher = new PaymentWatcherService(kit, walletIndex, {
+      emitEvent: () => {},
+      log: (level, msg) => api.logger[level]?.(msg) ?? api.logger.info(msg),
+    });
 
-  api.registerHook({
-    event: 'radius:payment_received',
-    handler: (data) => onPaymentReceived(data as {
-      from: string; amount: string; asset: string; txHash: string;
-    }, {
-      log: (level, msg) => api.log(level, msg),
-      injectMessage: (role, content) => api.injectMessage(role, content),
-    }),
-  });
+    api.registerService({
+      id: 'radius-payment-watcher',
+      start: () => watcher.start(),
+      stop: () => watcher.stop(),
+    });
 
-  api.log('info', 'Radius payment plugin registered');
-}
+    // Hook: log payment info on agent start
+    api.on('before_agent_start', async () => {
+      if (!kit) return;
+      try {
+        const balance = await kit.operations.getBalance(address);
+        api.logger.info(`Radius balance: ${balance.usd} USD, ${balance.sbc} SBC`);
+      } catch {
+        // Silently skip if RPC is unreachable during startup
+      }
+    });
+
+    api.logger.info('Radius payment plugin loaded');
+  },
+};
+
+export default radiusPlugin;

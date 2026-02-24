@@ -1,25 +1,20 @@
-import type { AgentWalletKit } from '@bombadilva/agent-wallet';
+import { Type } from '@sinclair/typebox';
 import { formatAmount, type Asset } from '@bombadilva/agent-wallet';
+import type { AgentWalletKit } from '@bombadilva/agent-wallet';
 
-export const monitorPaymentsTool = {
-  name: 'radius_monitor_payments',
-  description: 'List recent incoming payments received by this agent\'s Radius wallet',
-  parameters: {
-    type: 'object' as const,
-    properties: {
-      limit: {
-        type: 'number',
+export function createMonitorPaymentsTool(kit: AgentWalletKit, walletIndex: number) {
+  return {
+    name: 'radius_monitor_payments',
+    label: 'Radius Monitor Payments',
+    description: "List recent incoming payments received by this agent's Radius wallet",
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Number({
         description: 'Maximum number of payments to return (default: 20)',
-      },
-    },
-    required: [],
-  },
-
-  createHandler(kit: AgentWalletKit, walletIndex: number) {
-    return async (params: { limit?: number }) => {
+      })),
+    }),
+    async execute(_id: string, params: { limit?: number }) {
       const limit = params.limit ?? 20;
       const transactions = kit.db.getReceivedTransactions(kit.wallet.agentId, limit);
-
       const payments = transactions.map((tx) => ({
         txHash: tx.tx_hash,
         from: tx.counterparty,
@@ -29,12 +24,13 @@ export const monitorPaymentsTool = {
         refunded: !!tx.refunded,
         timestamp: tx.created_at,
       }));
-
       return {
-        payments,
-        count: payments.length,
-        agentId: kit.wallet.agentId,
+        content: [{ type: 'text' as const, text: JSON.stringify({
+          payments,
+          count: payments.length,
+          agentId: kit.wallet.agentId,
+        }, null, 2) }],
       };
-    };
-  },
-};
+    },
+  };
+}
